@@ -1,0 +1,1 @@
+cmd_/home/dean/CS353/A1/M4/module4.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000  --build-id  -T ./scripts/module-common.lds -o /home/dean/CS353/A1/M4/module4.ko /home/dean/CS353/A1/M4/module4.o /home/dean/CS353/A1/M4/module4.mod.o;  true
