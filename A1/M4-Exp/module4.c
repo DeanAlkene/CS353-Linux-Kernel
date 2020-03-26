@@ -2,12 +2,9 @@
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
-#include <linux/slab.h>
-// #define MAX_BUF_SIZE 16
-static int MAX_BUF_SIZE = 16;
-char *msg_init;
-// static char proc_buf[MAX_BUF_SIZE];
-static char* proc_buf = NULL;
+#define MAX_BUF_SIZE 16
+char *msg;
+static char proc_buf[MAX_BUF_SIZE];
 static unsigned long proc_buf_size = 0;
 
 static ssize_t read_proc(struct file *filp, char *usr_buf, size_t count, loff_t *offp) 
@@ -33,14 +30,18 @@ static ssize_t write_proc(struct file *filp, const char *usr_buf, size_t count, 
 {
     if(count > MAX_BUF_SIZE)
     {
-        printk(KERN_WARNING "write_proc: overflow, enlarge buffer...\n");
-        printk(KERN_WARNING "write_proc: MAX_BUF_SIZE %d -> %ld\n", MAX_BUF_SIZE, count + count / 2);
-        MAX_BUF_SIZE = count + count / 2;
-        kfree(proc_buf);
-        proc_buf = (char*)kmalloc(MAX_BUF_SIZE * sizeof(char), GFP_KERNEL);
+        proc_buf_size = MAX_BUF_SIZE;
+        printk(KERN_WARNING "write_proc: overflow detected\n");
+        printk(KERN_WARNING "write_proc: input size %lu\n", count);
+        printk(KERN_WARNING "write_proc: buffer size %lu\n", proc_buf_size);
     }
-    proc_buf_size = count;
-    
+    else
+    {
+        proc_buf_size = count;
+    }
+
+    // proc_buf_size = count; //to overflow
+
     if(copy_from_user(proc_buf, usr_buf, proc_buf_size))
     {
         printk(KERN_ERR "Copy from user unfinished\n");
@@ -69,19 +70,15 @@ static int __init M4_init (void)
         proc_remove(base);
         return -EINVAL;
     }
-
-    proc_buf = (char*)kmalloc(MAX_BUF_SIZE * sizeof(char), GFP_KERNEL);
-
     printk(KERN_INFO "/proc/M4_proc_dir/M4_proc successfully created\n");
-    msg_init = "Hello /proc!\n";
-    strcpy(proc_buf, msg_init);
-    proc_buf_size = strlen(msg_init);
+    msg = "Hello /proc!\n";
+    strcpy(proc_buf, msg);
+    proc_buf_size = strlen(msg);
     return 0;
 }
 
 void __exit M4_exit(void) 
 {
-    kfree(proc_buf);
     proc_remove(entry);
     proc_remove(base);
     printk(KERN_INFO "Exiting Module4...\n");
