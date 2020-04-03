@@ -160,7 +160,60 @@ sudo -S rmmod module2
 
 ### 3.1 实现
 
+在本模块中，需要在/proc文件夹下创建一个只读文件。调用在`linux/proc_fs.h`头文件中定义的`proc_create()`函数可以返回一个指向`proc_dir_entry`结构体的指针，如果指针非空，表明在指定路径创建了一个文件。具体的创建方式如下：
+
+```C
+struct proc_dir_entry *entry = NULL;
+static int __init M3_init (void) 
+{
+    entry = proc_create("M3_proc", 0444, NULL, &proc_fops);
+    if(!entry)
+    {
+        printk(KERN_ERR "Unable to create /proc/M3_proc\n");
+        return -EINVAL;
+    }
+    printk(KERN_INFO "/proc/M3_proc successfully created\n");
+    msg = "Hello /proc!\n";
+    strcpy(proc_buf, msg);
+    proc_buf_size = strlen(msg);
+    return 0;
+}
+```
+
+`proc_create()`的第一个参数是文件名，第二个参数为访问权限，`0444`代表无论根用户、拥有者和其用户组都只有读的权限，第三个参数代表父文件夹对应的`proc_dir_entry`指针，而这里父文件夹为/proc，则为NULL。最后一个参数是指向`file_operations`结构体的指针，在这个结构体中定义操作文件是需要调用的函数。这里我们需要注册读文件和写文件时调用的函数：
+
+```c
+struct file_operations proc_fops = { .read = read_proc, .write = write_proc };
+```
+而读文件时，我们像将内核中的信息显示给用户看。在模块初始化时，我们已经将`proc_buf`填入了信息，并计算了对应的`proc_buf_size`。我们只需利用`linux/uaccess.h`中定义的`copy_to_user()`函数，将数据拷贝至用户空间的缓存`usr_buf`即可。值得注意的是，若`read_proc()`的返回值不为0，那么它将被一直调用。但如果第一次调用即返回0，那么用户也不会看到输出。因此，我们需要控制此函数恰好被调用2次，第一次返回拷贝至用户空间的数据大小，第二次返回0。利用`static`变量的特性，引入`finished`变量即可实现这个功能。
+
+
+```c
+static ssize_t read_proc(struct file *filp, char *usr_buf, size_t count, loff_t *offp) 
+{
+    static int finished = 0;
+    if(finished)
+    {
+        printk(KERN_INFO "read_proc: END\n");
+        finished = 0;
+        return 0;
+    }
+    finished = 1;
+    if(copy_to_user(usr_buf, proc_buf, proc_buf_size))
+    {
+        printk(KERN_ERR "Copy to user unfinished\n");
+        return -EFAULT;
+    }
+    printk(KERN_INFO "read_proc: read %lu bytes\n", proc_buf_size);
+    return proc_buf_size;
+}
+```
+
+具体的`write_proc()`函数在下节详细介绍，这里只是为了体现创建的文件的只读性质。最后我们还需要在`M3_exit()`函数中调用`proc_remove(entry)`删除文件。
+
 ### 3.2 结果
+
+编译模块后执行下列命令，可以看到`M3_proc`是一个只读文件，普通用户不可写入（即使定义了写入时调用的函数）
 
 <center>
     <img style="border-radius: 0.3125em;
@@ -172,13 +225,45 @@ sudo -S rmmod module2
     color: #999;
     padding: 2px;">图4. 模块三 结果</div>
 </center>
+实验过程中还发现一个现象，若执行以下指令：
 
+```bash
+sudo echo 1 > /proc/M3_proc
+```
+
+无论文件的读写权限是0444还是0644，均提示权限不足。而0644权限下，超级用户应该可以写入。查询资料发现`sudo`指令只对离它最近的命令起作用，而管道`>`也算作命令，因此使用`sudo`命令作为超级用户写入应该执行：
+
+```bash
+sudo sh -c "echo 1 > /proc/M3_proc"
+```
+
+这时候，处于0444权限下的文件居然也可以被写入了。根据网上的资料，即使root权限为0，超级用户下，也可以对文件进行读写。
 
 ## 4. 模块四
 
 ### 4.1 实现
 
-### 4.2 结果
+在本模块中需要在/proc文件夹下建立一个文件夹，然后在文件夹中创建一个可读可写的文件。
+
+首先，我们需要利用`proc_mkdir()`函数创建文件夹，再利用`proc_create()`函数创建文件。在`M4_init()`函数中：
+
+```c
+	base = proc_mkdir("M4_proc_dir", NULL);
+    if(!base)
+    {
+        printk(KERN_ERR "Unable to create /proc/M4_proc_dir/\n");
+        return -EINVAL;
+    }
+    entry = proc_create("M4_proc", 0666, base, &proc_fops);
+    if(!entry)
+    {
+        printk(KERN_ERR "Unable to create /proc/M4_proc_dir/M4_proc\n");
+        proc_remove(base);
+        return -EINVAL;
+    }
+```
+
+`proc_mkdir()`函数只需指定文件夹名称以及父文件夹的`proc_dir_entry`结构体指针即可。`proc_create()`函数此时需要把父文件夹指针设置为`base`，并指定权限为0666。
 
 <center>
     <img style="border-radius: 0.3125em;
@@ -212,6 +297,9 @@ sudo -S rmmod module2
     color: #999;
     padding: 2px;">图7. 模块四 写覆盖</div>
 </center>
+### 4.2 结果
+
+解决了缓冲区溢出问题和写覆盖问题后，我们向文件写入超出缓冲区原大小的数据时，也能获得正确的结果。观察系统日志就可以看出，缓冲区的最大长度也是在不断变化的。
 
 <center>
     <img style="border-radius: 0.3125em;
