@@ -263,7 +263,38 @@ sudo sh -c "echo 1 > /proc/M3_proc"
     }
 ```
 
-`proc_mkdir()`函数只需指定文件夹名称以及父文件夹的`proc_dir_entry`结构体指针即可。`proc_create()`函数此时需要把父文件夹指针设置为`base`，并指定权限为0666。
+`proc_mkdir()`函数只需指定文件夹名称以及父文件夹的`proc_dir_entry`结构体指针即可。`proc_create()`函数此时需要把父文件夹指针设置为`base`，并指定权限为0666。为了实现向文件中写数据的功能，定义写函数：
+
+```c
+static ssize_t write_proc(struct file *filp, const char *usr_buf, size_t count, loff_t *offp) 
+{
+    proc_buf_size = count; 
+
+    if(copy_from_user(proc_buf, usr_buf, proc_buf_size))
+    {
+        printk(KERN_ERR "Copy from user unfinished\n");
+        return -EFAULT;
+    }
+    printk(KERN_INFO "write_proc: write %lu bytes\n", proc_buf_size);
+    return proc_buf_size;
+}
+```
+
+其中，`proc_buf`是一个定长数组，它的最大长度为`MAX_BUF_SIZE`，实际长度为`proc_buf_size`。在写文件时，`write_proc()`函数会收到来自用户的数据`usr_buf`以及数据的长度`count`。简单的想法就是利用`copy_from_user()`函数，将用户数据拷贝到内核中来。
+
+编写以下测试脚本：
+
+```bash
+sudo -S insmod module4.ko
+cat /proc/M4_proc_dir/M4_proc
+echo 1 > /proc/M4_proc_dir/M4_proc
+cat /proc/M4_proc_dir/M4_proc
+echo helloworldhelloworld > /proc/M4_proc_dir/M4_proc
+cat /proc/M4_proc_dir/M4_proc
+sudo -S rmmod module4.ko
+```
+
+运行，发现出现错误。错误原因是在第二次写入文件时，缓冲区溢出了。打印内核日志发现确实如此。
 
 <center>
     <img style="border-radius: 0.3125em;
@@ -286,6 +317,24 @@ sudo sh -c "echo 1 > /proc/M3_proc"
     color: #999;
     padding: 2px;">图6. 模块四 缓冲区溢出2</div>
 </center>
+为了解决这一问题，我们判断用户输入的长度是否超过了内核中`proc_buf`的最大长度，如果超过，则只写入前缀部分，并在内核日志中输出警告：
+
+```c
+if(count > MAX_BUF_SIZE)
+    {
+        proc_buf_size = MAX_BUF_SIZE;
+        printk(KERN_WARNING "write_proc: overflow detected\n");
+        printk(KERN_WARNING "write_proc: input size %lu\n", count);
+        printk(KERN_WARNING "write_proc: buffer size %lu\n", proc_buf_size);
+    }
+    else
+    {
+        proc_buf_size = count;
+    }
+```
+
+再次运行测试脚本，溢出的问题被解决了。但由于第二次写入超过了`proc_buf`的大小，用户缓冲区中的数据没有被读完，因此`write_proc()`再一次被调用，原来写入的数据被覆盖了。
+
 
 <center>
     <img style="border-radius: 0.3125em;
@@ -297,6 +346,22 @@ sudo sh -c "echo 1 > /proc/M3_proc"
     color: #999;
     padding: 2px;">图7. 模块四 写覆盖</div>
 </center>
+为了解决这个问题，我们直接在输入长度超出`proc_buf`最大长度时将它增长以容纳所有数据。我们将`proc_buf`改为动态数组，在`M4_init()`中申请，在`M4_exit()`中释放。而出现缓冲区即将溢出的情况时再释放、重新申请：
+
+```c
+if(count > MAX_BUF_SIZE)
+    {
+        printk(KERN_WARNING "write_proc: overflow, enlarge buffer...\n");
+        printk(KERN_WARNING "write_proc: MAX_BUF_SIZE %d -> %ld\n", MAX_BUF_SIZE, count + count / 2);
+        MAX_BUF_SIZE = count + count / 2;
+        kfree(proc_buf);
+        proc_buf = (char*)kmalloc(MAX_BUF_SIZE * sizeof(char), GFP_KERNEL);
+    }
+    proc_buf_size = count;
+```
+
+这样就解决了以上问题。
+
 ### 4.2 结果
 
 解决了缓冲区溢出问题和写覆盖问题后，我们向文件写入超出缓冲区原大小的数据时，也能获得正确的结果。观察系统日志就可以看出，缓冲区的最大长度也是在不断变化的。
@@ -311,5 +376,6 @@ sudo sh -c "echo 1 > /proc/M3_proc"
     color: #999;
     padding: 2px;">图8. 模块四 结果</div>
 </center>
-
 ## 5. 总结与感想
+
+在本Project中，我对Linux内核的模块编程有了一定的了解，并熟悉了proc文件系统的运作方式，这为接下来的学习打下了一个好的基础。
