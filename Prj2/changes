@@ -6,3 +6,33 @@ fork.c at 2297:
     ++ 2297 p->ctx = 0;
     https://www.quora.com/How-does-the-fork-system-call-in-Linux-work
     [fork()->clone()->]do_fork()->_do_fork()->copy_process() ([...] unknown source code)
+
+core.c at 4050
+    ++ 4050 next->ctx++;
+    schedule()->__schedule()
+
+base.c at 3096-3115 3209
+    ++ 3209 REG("ctx", S_IRUSR|S_IWUSR, proc_ctx_operations)
+    ++ 3096-3115
+    static ssize_t ctx_read(struct file *file, char __user *buf,
+			size_t count, loff_t *ppos)
+    {
+        struct task_struct task;
+        int ctx, len;
+        char buffer[32];
+        task = get_proc_task(file->f_inode);
+        ctx = task->ctx;
+        len = snprintf(buffer, sizeof(buffer), "%d", ctx);
+
+        if(copy_to_user(buf, buffer, len))
+        {
+            printk(KERN_ERR "Copy to user failed\n");
+            return -EFAULT;
+        }
+        return len;
+    }
+    static const struct file_operations proc_ctx_operations = {
+        .read = ctx_read,
+    };
+    118-125 struct pid_entry
+    3102-3209 struct tgid_base_stuff

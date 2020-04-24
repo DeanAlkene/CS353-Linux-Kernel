@@ -3093,6 +3093,27 @@ static int proc_stack_depth(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif /* CONFIG_STACKLEAK_METRICS */
 
+static ssize_t ctx_read(struct file *file, char __user *buf,
+			size_t count, loff_t *ppos)
+{
+	struct task_struct task;
+	int ctx, len;
+	char buffer[32];
+	task = get_proc_task(file->f_inode);
+	ctx = task->ctx;
+	len = snprintf(buffer, sizeof(buffer), "%d", ctx);
+
+	if(copy_to_user(buf, buffer, len))
+	{
+		printk(KERN_ERR "Copy to user failed\n");
+		return -EFAULT;
+	}
+	return len;
+}
+static const struct file_operations proc_ctx_operations = {
+	.read = ctx_read,
+};
+
 /*
  * Thread groups
  */
@@ -3206,6 +3227,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
 #endif
+	REG("ctx", S_IRUSR|S_IWUSR, proc_ctx_operations)
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
