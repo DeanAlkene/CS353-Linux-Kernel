@@ -11,25 +11,22 @@ core.c at 4050
     ++ 4050 next->ctx++;
     schedule()->__schedule()
 
-base.c at 3096-3115 3209
+base.c at 3096-3112 3209
     ++ 3209 REG("ctx", S_IRUSR|S_IWUSR, proc_ctx_operations)
-    ++ 3096-3115
+    ++ 3096-3112
     static ssize_t ctx_read(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos)
     {
-        struct task_struct task;
-        int ctx, len;
-        char buffer[32];
-        task = get_proc_task(file->f_inode);
+        struct task_struct *task;
+        int ctx;
+        size_t len;
+        char buffer[64];
+        task = get_proc_task(file_inode(file));
+        if (!task)
+            return -ESRCH;
         ctx = task->ctx;
         len = snprintf(buffer, sizeof(buffer), "%d", ctx);
-
-        if(copy_to_user(buf, buffer, len))
-        {
-            printk(KERN_ERR "Copy to user failed\n");
-            return -EFAULT;
-        }
-        return len;
+        return simple_read_from_buffer(buf, count, ppos, buffer, len);
     }
     static const struct file_operations proc_ctx_operations = {
         .read = ctx_read,

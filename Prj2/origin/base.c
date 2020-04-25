@@ -1369,7 +1369,7 @@ static const struct file_operations proc_fault_inject_operations = {
 static ssize_t proc_fail_nth_write(struct file *file, const char __user *buf,
 				   size_t count, loff_t *ppos)
 {
-	struct task_struct* task;
+	struct task_struct *task;
 	int err;
 	unsigned int n;
 
@@ -3093,24 +3093,6 @@ static int proc_stack_depth(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif /* CONFIG_STACKLEAK_METRICS */
 
-static ssize_t ctx_read(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
-{
-	struct task_struct *task;
-	int ctx;
-	size_t len;
-	char buffer[64];
-	task = get_proc_task(file_inode(file));
-	if (!task)
-		return -ESRCH;
-	ctx = task->ctx;
-	len = snprintf(buffer, sizeof(buffer), "%d", ctx);
-	return simple_read_from_buffer(buf, count, ppos, buffer, len);
-}
-static const struct file_operations proc_ctx_operations = {
-	.read = ctx_read,
-};
-
 /*
  * Thread groups
  */
@@ -3224,7 +3206,6 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
 #endif
-	REG("ctx", S_IRUSR|S_IWUSR, proc_ctx_operations)
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
