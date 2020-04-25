@@ -4052,12 +4052,12 @@ static void __sched notrace __schedule(bool preempt)
 
 	if (likely(prev != next)) {
 		rq->nr_switches++;
-		next->ctx++;
 		/*
 		 * RCU users of rcu_dereference(rq->curr) may not see
 		 * changes to task_struct made by pick_next_task().
 		 */
 		RCU_INIT_POINTER(rq->curr, next);
+		rq->curr->ctx++;
 		/*
 		 * The membarrier system call requires each architecture
 		 * to have a full memory barrier after updating
