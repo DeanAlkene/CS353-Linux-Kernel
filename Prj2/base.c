@@ -3104,7 +3104,7 @@ static ssize_t ctx_read(struct file *file, char __user *buf,
 	if (!task)
 		return -ESRCH;
 	ctx = task->ctx;
-	len = snprintf(buffer, sizeof(buffer), "%d", ctx);
+	len = snprintf(buffer, sizeof(buffer), "%d\n", ctx);
 	return simple_read_from_buffer(buf, count, ppos, buffer, len);
 }
 static const struct file_operations proc_ctx_operations = {
