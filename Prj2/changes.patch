@@ -1,0 +1,71 @@
+diff -u origin/base.c changed/base.c
+--- origin/base.c	2020-04-24 17:23:19.753789067 +0800
++++ changed/base.c	2020-04-26 11:03:22.095135032 +0800
+@@ -3093,6 +3093,24 @@
+ }
+ #endif /* CONFIG_STACKLEAK_METRICS */
+ 
++static ssize_t ctx_read(struct file *file, char __user *buf,
++			size_t count, loff_t *ppos)
++{
++	struct task_struct *task;
++	int ctx;
++	size_t len;
++	char buffer[64];
++	task = get_proc_task(file_inode(file));
++	if (!task)
++		return -ESRCH;
++	ctx = task->ctx;
++	len = snprintf(buffer, sizeof(buffer), "%d\n", ctx);
++	return simple_read_from_buffer(buf, count, ppos, buffer, len);
++}
++static const struct file_operations proc_ctx_operations = {
++	.read = ctx_read,
++};
++
+ /*
+  * Thread groups
+  */
+@@ -3206,6 +3224,7 @@
+ #ifdef CONFIG_PROC_PID_ARCH_STATUS
+ 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
+ #endif
++	REG("ctx", S_IRUSR|S_IWUSR, proc_ctx_operations)
+ };
+ 
+ static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
+diff -u origin/core.c changed/core.c
+--- origin/core.c	2020-04-24 17:23:27.241882520 +0800
++++ changed/core.c	2020-04-25 23:28:08.373794305 +0800
+@@ -4077,6 +4077,7 @@
+ 
+ 		/* Also unlocks the rq: */
+ 		rq = context_switch(rq, prev, next, &rf);
++		rq->curr->ctx++;
+ 	} else {
+ 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
+ 		rq_unlock_irq(rq, &rf);
+diff -u origin/fork.c changed/fork.c
+--- origin/fork.c	2020-04-24 17:23:39.550035789 +0800
++++ changed/fork.c	2020-04-24 17:25:38.191521206 +0800
+@@ -2294,7 +2294,7 @@
+ 
+ 	trace_task_newtask(p, clone_flags);
+ 	uprobe_copy_process(p, clone_flags);
+-
++	p->ctx = 0;
+ 	return p;
+ 
+ bad_fork_cancel_cgroup:
+diff -u origin/sched.h changed/sched.h
+--- origin/sched.h	2020-04-24 17:23:51.966189794 +0800
++++ changed/sched.h	2020-04-24 17:25:38.191521206 +0800
+@@ -1281,6 +1281,8 @@
+ 	unsigned long			prev_lowest_stack;
+ #endif
+ 
++	/*New field added by Dean Liu, a counter*/
++	int ctx;
+ 	/*
+ 	 * New fields for task_struct should be added above here, so that
+ 	 * they are included in the randomized portion of task_struct.
