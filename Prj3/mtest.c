@@ -157,8 +157,8 @@ static ssize_t mtest_proc_write(struct file *file, const char __user *buffer, si
     return count;
 }
 
-static struct file_operations proc_mtest_operations = {
-    .write = mtest_proc_write
+static struct proc_ops proc_mtest_operations = {
+    .proc_write = mtest_proc_write
 };
 
 static struct proc_dir_entry *mtest_proc_entry = NULL;
