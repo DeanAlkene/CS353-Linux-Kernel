@@ -1,0 +1,11 @@
+.mtest.ko.cmd
+.mtest.mod.cmd
+.mtest.mod.o.cmd
+.mtest.o.cmd
+Module.symvers
+modules.order
+mtest.ko
+mtest.mod
+mtest.mod.c
+mtest.mod.o
+mtest.o
