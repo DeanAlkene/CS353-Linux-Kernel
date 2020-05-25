@@ -47,7 +47,7 @@ static struct page* _find_page(struct vm_area_struct *vma, unsigned long addr)
 static void mtest_list_vma(void) 
 {
     struct vm_area_struct *cur = current->mm->mmap;
-    while(cur)
+    while (cur)
     {
         char perm[5] = "----";
         if(cur->vm_flags & VM_READ)
@@ -66,6 +66,11 @@ static void mtest_list_vma(void)
         {
             perm[3] = 's';
         }
+        else
+        {
+            perm[3] = 'p';
+        }
+
         printk(KERN_INFO "0x%lx\t0x%lx\t%s\n", cur->vm_start, cur->vm_end, perm);
         cur = cur->vm_next;
     }
