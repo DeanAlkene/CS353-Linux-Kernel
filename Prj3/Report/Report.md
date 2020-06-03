@@ -118,12 +118,13 @@ echo listvma > /proc/mtest
 <center>
     <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/pgt.png">
+    src="pic/pgt.png" width=600>
     <div style="color:orange; border-bottom: 1px solid #d9d9d9;
     display: inline-block;
     color: #999;
     padding: 2px;">图2. 四级页表</div>
 </center>
+
 
 上图是传统的四级页表，而五级页表则是在page global directory (pgd) 后面又增加了一级 page 4 directory (p4d)。而有关的结构体可以在`asm/pgtable_types.h` (x86)，`asm-generic?5level-fixup.h`等头文件中找到。
 
