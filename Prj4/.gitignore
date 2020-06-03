@@ -1,5 +1,3 @@
 romfs-backup
-romfs/internal.h
-romfs/Kconfig
-romfs/mmap-nommu.c
-romfs/storage.c
+romfs/t
+romfs/test.img

@@ -1,3 +1,5 @@
+
+
 # CS353 Linux内核 Project3 报告
 
 517030910214 刘宏洲
@@ -214,6 +216,63 @@ echo findpage 0xffffa5d39000 > /proc/mtest
 
 ### 3.1 实现
 
+在第二部分的基础上，我们可以很轻松地实现writeval这一功能。值得注意的是，在一个进程中要对指定地址写数据时，这个地址是进程的虚拟地址。然而模块的特殊之处在于，它运行在内核态，因此虚拟地址空间是共享的内核态虚拟地址空间。而在64位系统中，内核态的低端虚拟地址空间线性地映射了所有物理地址空间（与32位系统不同）。因此，为了在模块中修改一个运行于用户态的进程的虚拟地址的值，我们需要首先将这个地址转化为物理地址，然后再转换到内核的虚拟地址空间中。代码如下：
+
+```c
+static void mtest_write_val(unsigned long addr, unsigned long val)
+{
+    struct vm_area_struct *vma = find_vma(current->mm, addr);
+    struct page *page = NULL;
+    unsigned long *kernel_addr;
+    if (!vma)
+    {
+        printk(KERN_ERR "VMA not found\n");
+        return;
+    }
+    if(!(vma->vm_flags & VM_WRITE))
+    {
+        printk(KERN_ERR "Writing permission denied\n");
+        return;
+    }
+    page = _find_page(vma, addr);
+    if(!page)
+    {
+        printk(KERN_ERR "Translation not found\n");
+        return;
+    }
+    else
+    {
+        kernel_addr = (unsigned long *)page_address(page);
+        *kernel_addr = val;
+        printk(KERN_INFO "Write %ld into VA:0x%lx\n", val, addr);
+    }
+}
+```
+
+可见，我们首先是找`vma`，然后判断`addr`是否存在。然后我们还要根据`vm_area_struct`的`vm_flags`成员判断这个地址是否可写。随后调用`_find_page`获得地址所在页。我们还需要调用`page_address()`函数找出页对应的内核虚拟地址，然后向其中写入即可。还有另一种方法，则是再进一步将页转化为物理地址，然后调用`phys_to_virt()`函数（定义在`asm/memory.h`）获得对应的内核虚拟地址再写入。
+
 ### 3.2 结果
 
+我们采用以下命令来测试
+
+```bash
+echo writeval 0xffffa5ceb123 123 > /proc/mtest
+echo writeval 0xffffa5cec123 123 > /proc/mtest
+echo writeval 0xffffa5d39001 123 > /proc/mtest
+```
+
+使用`dmesg`命令即可查看结果。参照第一部分的结果，第一条命令的地址存在于一个可写的虚拟地址区间内，因此写入成功。第二条命令的地址处于不可写的区间内，因此不能写入。而第三条命令的地址是不存在任何区间内的，因此也无法写入。
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/5.png">
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图4. writeval结果</div>
+</center>
+
 ## 4. 总结
+
+在这一个Project中，我对Linux内核的内存管理机制有了更加深入的理解，包括页表、虚拟地址、物理地址、内核虚拟地址等等。还对Linux内核代码中的各种数据结构有了一定的了解，这对未来的学习和实践有着巨大的意义。
