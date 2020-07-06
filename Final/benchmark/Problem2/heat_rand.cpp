@@ -7,13 +7,29 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <hbwmalloc.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
 
 using namespace std;
+
+#define PAGE_NUM 1000000
+struct heat
+{
+    unsigned long addr;
+    int access_time;
+};
+
+struct heat read_info[PAGE_NUM + 1];
 
 // static int NX = 1024*8;
 // static int NY = 1024*4;
 // static int NT = 200;
 
+// 1024 * 4 * 64 = 1024 * 4 * 8 byte = 32KB = 8 pages
+// Every thread handle 8 * 8 chunks -> 128 threads
 #define NX 1024*8
 #define NY 1024*4
 #define NT 100
@@ -42,24 +58,21 @@ void swap_ranks(double ***from_ranks, double ***to_ranks) {
 }
 
 int heat() {
-	struct timeval start, finish;
-	struct timeval start_1, finish_1;
 	double **before, **after;
 	int  c, l;
 
 	before = (double **) malloc(nx * sizeof(double *));
   	after = (double **) malloc(nx * sizeof(double *));
 
-  	#pragma omp parallel for schedule(static, 8) 
+  	#pragma omp parallel for schedule(static, 64) 
   	for (int i = 0; i < nx; ++i) 
   	{
   		*(before + i) = (double *) malloc(ny * sizeof(double));
     	*(after + i) = (double *) malloc(ny * sizeof(double));
   	}
-
   	cout << "FINISH ALLOCTION *************************" << endl;
 
-  	#pragma omp parallel for schedule(static, 8) 
+  	#pragma omp parallel for schedule(static, 64) 
   	for (int i = 0; i < nx; ++i) 
   	{
   		int a, b, llb, lub;
@@ -88,15 +101,32 @@ int heat() {
 
   	cout << "FINISH INITTTTT *************************" << endl;
 
-  	gettimeofday(&start, NULL);
   	for (c = 1; c <= nt; c++) {
   		t = tu + c * dt;
-  		gettimeofday(&start_1, NULL);
 
-  		#pragma omp parallel for schedule(static, 8)
-	    for (int i = 0; i < nx; ++i)
+  		#pragma omp parallel for schedule(static, 64)
+	    for (int t = 0; t < nx; ++t)
 	    {
-	        int a, b, llb, lub;
+			int i, a, b, llb, lub;
+
+			int tmp = t / 64;
+			if (tmp >= 64) {
+				i = t % 64 + 64 * 0;
+			} else if (tmp >= 32) {
+				i = t % 64 + 64 * 1;
+			} else if (tmp >= 16) {
+				i = t % 64 + 64 * 2;
+			} else if (tmp >= 8) {
+				i = t % 64 + 64 * 3;
+			} else if (tmp >= 4) {
+				i = t % 64 + 64 * 4;
+			} else if (tmp >= 2) {
+				i = t % 64 + 64 * 5;
+			} else if (tmp >= 1) {
+				i = t % 64 + 64 * 6;
+			} else {
+				i = t % 64 + 64 * 7;
+			}
 	    
 		    if (i == 0) {
 		    	for (a=0, b=0; b < ny; b++){
@@ -118,24 +148,57 @@ int heat() {
 		    }
 	    }
 
-  		gettimeofday(&finish_1, NULL);
-        printf("Elapsed time of iteration[%d]: %10.6f micro seconds\n", c,
-         (((finish_1.tv_sec * 1000000.0) + finish_1.tv_usec) -
-        ((start_1.tv_sec * 1000000.0) + start_1.tv_usec)) / 1.0);
+  		if (c % 5 == 0)
+		{
+			usleep(20000);
+		}
 
-        swap_ranks(&after, &before);
+		swap_ranks(&after, &before);
   	}
-
-  	gettimeofday(&finish, NULL); 
-  	printf("Elapsed time of Heat: %10.6f micro seconds\n\n", 
-		 (((finish.tv_sec * 1000000.0) + finish.tv_usec) -
-	  	((start.tv_sec * 1000000.0) + start.tv_usec)) / 1.0);
+	printf("I've done!\n");
 
     return 0;
 }
 
+void* collect(void* args)
+{
+	int f, i, c, actual_len;
+	char write_info[100];
+	// char read_info[5000000];
+
+	sleep(1);
+
+	f = open("/proc/heat", O_RDWR | O_TRUNC);
+
+	ftruncate(f, 0);
+    lseek(f, 0, SEEK_SET);
+	sprintf(write_info, "filter %d", getpid());
+	write(f, write_info, strlen(write_info));
+
+	for (c = 0; c < 50; ++c)
+	{
+		ftruncate(f, 0);
+		lseek(f, 0, SEEK_SET);
+		sprintf(write_info, "collect %d", getpid());
+		write(f, write_info, strlen(write_info));
+		read(f, read_info, sizeof(read_info));
+		actual_len = read_info[0].access_time;
+		printf("-----------------------------HEAT AT %d-----------------------------\n", c);
+		for (i = 1; i <= actual_len; ++i)
+		{
+			if(read_info[i].access_time > 0)
+				printf("PAGE: 0x%lx\tHEAT: %d\n", read_info[i].addr, read_info[i].access_time);
+		}
+		printf("-----------------------------HEAT AT %d-----------------------------\n", c);
+		usleep(5000);
+	}
+	close(f);
+}
 
 int main(int argc, char *argv[]){
+	pthread_t id;
+	int ret;
+
 	nx = atoi(argv[1])*1024;
 	ny = NY;
 	nt = NT;
@@ -154,8 +217,18 @@ int main(int argc, char *argv[]){
   	dtdxsq = dt / (dx * dx);
   	dtdysq = dt / (dy * dy);
 
-  	heat();
+	ret = pthread_create(&id, NULL, &collect, NULL);
+	if (ret == 0)
+	{
+		printf("-----------------------------Start heat collection-----------------------------\n");
+	}
+	else
+	{
+		printf("Start collection failed!\n");
+		return 0;
+	}
+
+	heat();
     
     return 0;
 }
-

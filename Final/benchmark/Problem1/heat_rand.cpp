@@ -7,6 +7,10 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <hbwmalloc.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <string.h>
 
 using namespace std;
 
@@ -46,9 +50,14 @@ void swap_ranks(double ***from_ranks, double ***to_ranks) {
 int heat() {
 	struct timeval start, finish;
 	struct timeval start_1, finish_1;
+	struct timeval collectstart, collectfinish;
 	double **before, **after;
 	int  c, l;
+	size_t malloc_size;
+	int f;
+	char write_info[100];
 
+	f = open("/proc/heat", O_WRONLY | O_TRUNC);
 	before = (double **) malloc(nx * sizeof(double *));
   	after = (double **) malloc(nx * sizeof(double *));
 
@@ -57,8 +66,12 @@ int heat() {
   	{
   		*(before + i) = (double *) malloc(ny * sizeof(double));
     	*(after + i) = (double *) malloc(ny * sizeof(double));
+		printf("before: 0x%lx 0x%lx\n", *(before + i), *(before + i) + ny * sizeof(double));
+		printf("after: 0x%lx 0x%lx\n", *(after + i), *(after + i) + ny * sizeof(double));
   	}
 
+	malloc_size = 2 * nx * ny * sizeof(double) / (1 << 12);
+	printf("Malloc size: %ld\n", malloc_size);
   	cout << "FINISH ALLOCTION *************************" << endl;
 
   	#pragma omp parallel for schedule(static, 64) 
@@ -89,6 +102,10 @@ int heat() {
   	}
 
   	cout << "FINISH INITTTTT *************************" << endl;
+	ftruncate(f, 0);
+    lseek(f, 0, SEEK_SET);
+	sprintf(write_info, "filter %d", getpid());
+	write(f, write_info, strlen(write_info));
 
   	gettimeofday(&start, NULL);
   	for (c = 1; c <= nt; c++) {
@@ -140,18 +157,32 @@ int heat() {
 	    }
 
   		gettimeofday(&finish_1, NULL);
-        printf("Elapsed time of iteration[%d]: %10.6f micro seconds\n", c,
+        printf("Elapsed time of iteration[%d]: %10.6f u seconds\n", c,
          (((finish_1.tv_sec * 1000000.0) + finish_1.tv_usec) -
         ((start_1.tv_sec * 1000000.0) + start_1.tv_usec)) / 1.0);
+
+		gettimeofday(&collectstart, NULL);
+		ftruncate(f, 0);
+    	lseek(f, 0, SEEK_SET);
+		sprintf(write_info, "collect %d", getpid());
+		write(f, write_info, strlen(write_info));
+		gettimeofday(&collectfinish, NULL);
+		printf("Elapsed time of collection[%d]: %10.6f u seconds\n", c,
+         (((collectfinish.tv_sec * 1000000.0) + collectfinish.tv_usec) -
+        ((collectstart.tv_sec * 1000000.0) + collectstart.tv_usec)) / 1.0);
 
         swap_ranks(&after, &before);
   	}
 
   	gettimeofday(&finish, NULL); 
-  	printf("Elapsed time of Heat: %10.6f micro seconds\n\n", 
+  	printf("Elapsed time of Heat: %10.6f u seconds\n\n", 
 		 (((finish.tv_sec * 1000000.0) + finish.tv_usec) -
 	  	((start.tv_sec * 1000000.0) + start.tv_usec)) / 1.0);
-
+	ftruncate(f, 0);
+	lseek(f, 0, SEEK_SET);
+	sprintf(write_info, "print");
+	write(f, write_info, strlen(write_info));
+	close(f);
     return 0;
 }
 
