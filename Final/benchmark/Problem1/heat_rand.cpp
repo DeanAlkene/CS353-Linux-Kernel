@@ -71,7 +71,10 @@ int heat() {
   	}
 
 	malloc_size = 2 * nx * ny * sizeof(double) / (1 << 12);
-	printf("Malloc size: %ld\n", malloc_size);
+	ftruncate(f, 0);
+    lseek(f, 0, SEEK_SET);
+	sprintf(write_info, "malloc 1 %ld", malloc_size);
+	write(f, write_info, strlen(write_info));
   	cout << "FINISH ALLOCTION *************************" << endl;
 
   	#pragma omp parallel for schedule(static, 64) 

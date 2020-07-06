@@ -172,6 +172,11 @@ void* collect(void* args)
 
 	ftruncate(f, 0);
     lseek(f, 0, SEEK_SET);
+	sprintf(write_info, "malloc 0 0");
+	write(f, write_info, strlen(write_info));
+
+	ftruncate(f, 0);
+    lseek(f, 0, SEEK_SET);
 	sprintf(write_info, "filter %d", getpid());
 	write(f, write_info, strlen(write_info));
 

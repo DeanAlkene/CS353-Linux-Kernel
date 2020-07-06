@@ -17,6 +17,8 @@
 #define MAX_READ_BUF_SIZE 5000000
 #define MAX_WRITE_BUF_SIZE 64
 static char proc_buf[MAX_WRITE_BUF_SIZE];
+static unsigned long malloc_num = 0;
+static int is_show_malloc = 0;
 
 struct heat
 {
@@ -136,7 +138,11 @@ static int filter_page(pid_t pid)
     }
     heat_info[0].addr = 0;
     heat_info[0].access_time = filtered_num;
-    printk(KERN_INFO "total: %ld, filtered: %ld\n", tsk->mm->total_vm, filtered_num);
+    if (is_show_malloc)
+        printk(KERN_INFO "total: %ld, filtered: %ld, malloc: %ld\n", tsk->mm->total_vm, filtered_num, malloc_num);
+    else
+        printk(KERN_INFO "total: %ld, filtered: %ld\n", tsk->mm->total_vm, filtered_num);
+    
     return 0;
 }
 
@@ -251,6 +257,10 @@ static ssize_t getHeat_proc_write(struct file *file, const char __user *buffer, 
         printk(KERN_INFO "collect PID: %d\n", pid);
         ret = collect_heat(pid);
     }
+    else if (strncmp(proc_buf, "malloc", 6) == 0)
+    {
+        sscanf(proc_buf + 7, "%d %ld", &is_show_malloc, &malloc_num);
+    }
     else if (strncmp(proc_buf, "print", 5) == 0)
     {
         print_info();
@@ -289,7 +299,7 @@ static void __exit getHeat_exit(void)
 }
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Final1");
+MODULE_DESCRIPTION("Final");
 MODULE_AUTHOR("Hongzhou Liu");
 module_init(getHeat_init);
 module_exit(getHeat_exit);
