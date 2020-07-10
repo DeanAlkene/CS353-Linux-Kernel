@@ -36,50 +36,51 @@ static inline pte_t* _find_pte(struct mm_struct *mm, unsigned long addr)
     static pud_t *pud = NULL;
     static pmd_t *pmd = NULL;
     static pte_t *pte = NULL;
-    static unsigned long lastAddr = 0;
     static int useLast = 0;
+    static unsigned long lastAddr = 0;
 
-    if (pgd_index(addr) == pgd_index(lastAddr) && useLast)
-        goto P4D;
-    useLast = 0;
-    lastAddr = addr;
-    pgd = pgd_offset(mm, addr);
-    if(pgd_none(*pgd) || pgd_bad(*pgd))
-        goto FAIL;
-P4D:
-    if (p4d_index(addr) == p4d_index(lastAddr) && useLast)
-        goto PUD;
-    useLast = 0;
-    lastAddr = addr;
-    p4d = p4d_offset(pgd, addr);
-    if(p4d_none(*p4d) || p4d_bad(*p4d))
-        goto FAIL;
-PUD:
-    if (pud_index(addr) == pud_index(lastAddr) && useLast)
-        goto PMD;
-    useLast = 0;
-    lastAddr = addr;
-    pud = pud_offset(p4d, addr);
-    if(pud_none(*pud) || pud_bad(*pud))
-        goto FAIL;
-PMD:
-    if (pmd_index(addr) == pmd_index(lastAddr) && useLast)
-        goto PTE;
-    useLast = 0;
-    lastAddr = addr;
-    pmd = pmd_offset(pud, addr);
-    if(pmd_none(*pmd) || pmd_bad(*pmd))
-        goto FAIL;
-PTE:
+    if (!(pgd_index(addr) == pgd_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pgd = pgd_offset(mm, addr);
+        if(pgd_none(*pgd) || pgd_bad(*pgd))
+            return NULL;
+    }
+
+    if (!(p4d_index(addr) == p4d_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        p4d = p4d_offset(pgd, addr);
+        if(p4d_none(*p4d) || p4d_bad(*p4d))
+            return NULL;
+    }
+
+    if (!(pud_index(addr) == pud_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pud = pud_offset(p4d, addr);
+        if(pud_none(*pud) || pud_bad(*pud))
+            return NULL;
+    }
+
+    if (!(pmd_index(addr) == pmd_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pmd = pmd_offset(pud, addr);
+        if(pmd_none(*pmd) || pmd_bad(*pmd))
+            return NULL;
+    }
+
     useLast = 1;
     lastAddr = addr;
     pte = pte_offset_map(pmd, addr);
     if(pte_none(*pte) || !pte_present(*pte))
-        goto FAIL;
-
+        return NULL;
     return pte;
-FAIL:
-    return NULL;
 }
 
 static int filter_page(pid_t pid)

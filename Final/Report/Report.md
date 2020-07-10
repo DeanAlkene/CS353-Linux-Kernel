@@ -188,54 +188,55 @@ static inline pte_t* _find_pte(struct mm_struct *mm, unsigned long addr)
     static pud_t *pud = NULL;
     static pmd_t *pmd = NULL;
     static pte_t *pte = NULL;
-    static unsigned long lastAddr = 0;
     static int useLast = 0;
+    static unsigned long lastAddr = 0;
 
-    if (pgd_index(addr) == pgd_index(lastAddr) && useLast)
-        goto P4D;
-    useLast = 0;
-    lastAddr = addr;
-    pgd = pgd_offset(mm, addr);
-    if(pgd_none(*pgd) || pgd_bad(*pgd))
-        goto FAIL;
-P4D:
-    if (p4d_index(addr) == p4d_index(lastAddr) && useLast)
-        goto PUD;
-    useLast = 0;
-    lastAddr = addr;
-    p4d = p4d_offset(pgd, addr);
-    if(p4d_none(*p4d) || p4d_bad(*p4d))
-        goto FAIL;
-PUD:
-    if (pud_index(addr) == pud_index(lastAddr) && useLast)
-        goto PMD;
-    useLast = 0;
-    lastAddr = addr;
-    pud = pud_offset(p4d, addr);
-    if(pud_none(*pud) || pud_bad(*pud))
-        goto FAIL;
-PMD:
-    if (pmd_index(addr) == pmd_index(lastAddr) && useLast)
-        goto PTE;
-    useLast = 0;
-    lastAddr = addr;
-    pmd = pmd_offset(pud, addr);
-    if(pmd_none(*pmd) || pmd_bad(*pmd))
-        goto FAIL;
-PTE:
+    if (!(pgd_index(addr) == pgd_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pgd = pgd_offset(mm, addr);
+        if(pgd_none(*pgd) || pgd_bad(*pgd))
+            return NULL;
+    }
+
+    if (!(p4d_index(addr) == p4d_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        p4d = p4d_offset(pgd, addr);
+        if(p4d_none(*p4d) || p4d_bad(*p4d))
+            return NULL;
+    }
+
+    if (!(pud_index(addr) == pud_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pud = pud_offset(p4d, addr);
+        if(pud_none(*pud) || pud_bad(*pud))
+            return NULL;
+    }
+
+    if (!(pmd_index(addr) == pmd_index(lastAddr) && useLast))
+    {
+        useLast = 0;
+        lastAddr = addr;
+        pmd = pmd_offset(pud, addr);
+        if(pmd_none(*pmd) || pmd_bad(*pmd))
+            return NULL;
+    }
+
     useLast = 1;
     lastAddr = addr;
     pte = pte_offset_map(pmd, addr);
     if(pte_none(*pte) || !pte_present(*pte))
-        goto FAIL;
-
+        return NULL;
     return pte;
-FAIL:
-    return NULL;
 }
 ```
 
-在这个函数中，我们将所有变量声明为`static`类型，便于保存上一次调用的中间结果。`lastAddr`用于储存上一次转换的虚拟地址，而`useLast`则用于表明是否使用上一次转换的中间结果。而每一级页表的翻译过程变为，先判断这次转换的地址对应的表项是否与上次相同并且此时处于`useLast==1`的状态。若不相同，则需要打断使用缓存的过程，置`useLast`为0，更新`lastAddr`并重新转换。若相同，则说明可以利用上一次的中间结果，那么直接跳转至下一级转换即可。注意，在最后一级翻译时要置`useLast`为1，表明下次转换需要利用这次的结果。通过缓存上一次中间结果的方法，可以大量减少访问各级页表耗费的时间，达到提速的效果。
+在这个函数中，我们将所有变量声明为`static`类型，便于保存上一次调用的中间结果。`lastAddr`用于储存上一次转换的虚拟地址，而`useLast`则用于表明是否使用上一次转换的中间结果。而每一级页表的翻译过程变为，先判断这次转换的地址对应的表项是否与上次相同并且此时处于`useLast==1`的状态。若不相同，则需要打断使用缓存的过程，置`useLast`为0，更新`lastAddr`并重新转换。若相同，则说明可以利用上一次的中间结果，那么直接进行下一级转换即可。注意，在最后一级翻译时要置`useLast`为1，表明下次转换需要利用这次的结果。通过缓存上一次中间结果的方法，可以大量减少访问各级页表耗费的时间，达到提速的效果。
 
 ### 2.2 结果
 
