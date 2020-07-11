@@ -101,14 +101,36 @@ static int filter_page(pid_t pid)
 
 我们对提供的`heat.cpp`与`heat_rand.cpp`进行一定的修改，并利用这两个程序来展示这个部分的实验结果。
 
-使用以下命令，便可观察输出
+使用以下命令，便可观察输出（只展示heat.cpp的结果）
 
 ```bash
 ./heat 10
 dmesg
 ```
 
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/1.png" width=600>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图1. 筛选页面</div>
+</center>
 
+由于终端显示的行数有限，我截取了`/var/log/kern.log`中的内容，可见，筛选出的页面总数为申请页面总数的109%，说明这样的筛选策略是有效的。
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/2.png" width=600>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图2. 申请页面</div>
+</center>
+
+除此之外，我们观察用户态申请的二维数组中，部分一维数组的起始地址与结束地址，如图2。我们会发现，这些地址都包含在筛选出的VMA中，并且，每一个一维数组的起始地址与页面起始地址都不相同。例如图中的第一个数组的起始地址为0x560ab65a3f80，而它所在的页面起始地址应当为0x560ab65a3000。
 
 ## 2. 收集页面热度
 
@@ -176,67 +198,39 @@ static int collect_heat(pid_t pid)
 }
 ```
 
-可见，同第一部分一样，要调用`find_get_pid`以及`get_pid_task`获得`task_struct`。随后遍历之前过滤得到的所有数据页面，并将页面的虚拟地址转化为对应的页表项`pte`。随后调用`pte_young`判断在上一个时间段中，这个页面是否被访问。若被访问过，则需要统计累计访问信息，并调用`pte_mkold`清空所有标志位。值得注意的是，`pte_mkold`并不会改变原有表项的值，而是返回一个新的`pte`，因此，我们需要将返回值写入这个`pte`中，完成更新。注意，有的页面虚拟地址对应的`pte`并不存在（没有数据存在），因此我们需要判断并跳过这些虚拟地址。
-
-在这个函数中，最耗时的部分就是虚拟地址到`pte`的转换过程`_find_pte`。考虑到大部分时刻，需要转换的虚拟地址是连续的，因此可以利用这一点，通过缓存上一次转换的中间结果，来加速转换。具体实现如下：
+可见，同第一部分一样，要调用`find_get_pid`以及`get_pid_task`获得`task_struct`。随后遍历之前过滤得到的所有数据页面，并将页面的虚拟地址转化为对应的页表项`pte`。随后调用`pte_young`判断在上一个时间段中，这个页面是否被访问。若被访问过，则需要统计累计访问信息，并调用`pte_mkold`清空所有标志位。值得注意的是，`pte_mkold`并不会改变原有表项的值，而是返回一个新的`pte`，因此，我们需要将返回值写入这个`pte`中，完成更新。注意，有的页面虚拟地址对应的`pte`并不存在（没有数据存在），因此我们需要判断并跳过这些虚拟地址。转换虚拟地址到`pte`的函数如下：
 
 ```c
 static inline pte_t* _find_pte(struct mm_struct *mm, unsigned long addr)
 {
-    static pgd_t *pgd = NULL;
-    static p4d_t *p4d = NULL;
-    static pud_t *pud = NULL;
-    static pmd_t *pmd = NULL;
-    static pte_t *pte = NULL;
-    static int useLast = 0;
-    static unsigned long lastAddr = 0;
+    pgd_t *pgd = NULL;
+    p4d_t *p4d = NULL;
+    pud_t *pud = NULL;
+    pmd_t *pmd = NULL;
+    pte_t *pte = NULL;
 
-    if (!(pgd_index(addr) == pgd_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pgd = pgd_offset(mm, addr);
-        if(pgd_none(*pgd) || pgd_bad(*pgd))
-            return NULL;
-    }
+    pgd = pgd_offset(mm, addr);
+    if(pgd_none(*pgd) || pgd_bad(*pgd))
+        return NULL;
 
-    if (!(p4d_index(addr) == p4d_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        p4d = p4d_offset(pgd, addr);
-        if(p4d_none(*p4d) || p4d_bad(*p4d))
-            return NULL;
-    }
+    p4d = p4d_offset(pgd, addr);
+    if(p4d_none(*p4d) || p4d_bad(*p4d))
+        return NULL;
 
-    if (!(pud_index(addr) == pud_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pud = pud_offset(p4d, addr);
-        if(pud_none(*pud) || pud_bad(*pud))
-            return NULL;
-    }
+    pud = pud_offset(p4d, addr);
+    if(pud_none(*pud) || pud_bad(*pud))
+        return NULL;
 
-    if (!(pmd_index(addr) == pmd_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pmd = pmd_offset(pud, addr);
-        if(pmd_none(*pmd) || pmd_bad(*pmd))
-            return NULL;
-    }
+    pmd = pmd_offset(pud, addr);
+    if(pmd_none(*pmd) || pmd_bad(*pmd))
+        return NULL;
 
-    useLast = 1;
-    lastAddr = addr;
     pte = pte_offset_map(pmd, addr);
     if(pte_none(*pte) || !pte_present(*pte))
         return NULL;
     return pte;
 }
 ```
-
-在这个函数中，我们将所有变量声明为`static`类型，便于保存上一次调用的中间结果。`lastAddr`用于储存上一次转换的虚拟地址，而`useLast`则用于表明是否使用上一次转换的中间结果。而每一级页表的翻译过程变为，先判断这次转换的地址对应的表项是否与上次相同并且此时处于`useLast==1`的状态。若不相同，则需要打断使用缓存的过程，置`useLast`为0，更新`lastAddr`并重新转换。若相同，则说明可以利用上一次的中间结果，那么直接进行下一级转换即可。注意，在最后一级翻译时要置`useLast`为1，表明下次转换需要利用这次的结果。通过缓存上一次中间结果的方法，可以大量减少访问各级页表耗费的时间，达到提速的效果。
 
 ### 2.2 结果
 
@@ -253,7 +247,32 @@ static void print_info(void)
 }
 ```
 
-再此基础上，再次运行`heat.cpp`与`heat_rand.cpp`（输入参数与第一部分一致），我们可以在内核日志中看到获得的热度信息结果。由于一次打印将会输出约17万行，我们只在用户态程序的最后一个循环结束后打印热度信息。并且，这时我们不使用`dmesg`命令，而是直接打开`/var/log/kern.log`观察输出如下：
+再此基础上，再次运行`heat.cpp`与`heat_rand.cpp`（输入参数与第一部分一致），我们可以在内核日志中看到获得的热度信息结果。由于一次打印将会输出约17万行，我们只在用户态程序的最后一个循环结束后打印热度信息。在`/var/log/kern.log`中的输出以及用户态的输出如下：
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/3.png" width=300>
+     <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/4.png" width=300>
+    <br>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图3. 收集热度（部分输出）</div>
+</center>
+可见，收集约170000个页面热度信息所需的时间约为3ms，相对于访问密集型程序的计算时间来说还是比较小的。最终，经历了100个循环后的部分热度信息输出如下：
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/5.png" width=600>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图4. 热度信息</div>
+</center>
 
 ## 3. 与用户态交互
 
@@ -399,7 +418,45 @@ void* collect(void* args)
 
 ### 3.2 结果
 
-直接运行benchmark中的两个程序（输入参数为10）即可观察热度信息的打印。
+直接运行benchmark中的两个程序（输入参数为10）即可观察热度信息的打印。由于收集一次热度信息输出的字符太多（约300万个），如果在终端使用`printf`输出，会花费大量时间，需要调整`heat`线程的睡眠时间，于是我将输出重定向至`res`文件中，以下是输出的结果：
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/6.png" width=300>
+     <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/7.png" width=300>
+    <br>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图5. 用户态输出（部分）</div>
+</center>
+
+除此之外，我还绘制了热度信息的大致分布。
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/heat1.png" width=600>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图6. heat.cpp 热度分布</div>
+</center>
+
+<center>
+    <img style="border-radius: 0.3125em;
+    box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
+    src="pic/heat2.png" width=600>
+    <div style="color:orange; border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;">图7. heat_rand.cpp 热度分布</div>
+</center>
+
+由此可见，heat.cpp对于数据的访问频次比较均匀，而heat_rand.cpp对数据的访问主要集中在某几个地址。至于高地址部分，两个程序都出现了密集的波峰，这可能是因为数据页面在这一部分的分布比较分散。
 
 ## 4. 总结
 

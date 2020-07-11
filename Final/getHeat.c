@@ -31,52 +31,28 @@ static int heat_info_len = 0;
 
 static inline pte_t* _find_pte(struct mm_struct *mm, unsigned long addr)
 {
-    static pgd_t *pgd = NULL;
-    static p4d_t *p4d = NULL;
-    static pud_t *pud = NULL;
-    static pmd_t *pmd = NULL;
-    static pte_t *pte = NULL;
-    static int useLast = 0;
-    static unsigned long lastAddr = 0;
+    pgd_t *pgd = NULL;
+    p4d_t *p4d = NULL;
+    pud_t *pud = NULL;
+    pmd_t *pmd = NULL;
+    pte_t *pte = NULL;
 
-    if (!(pgd_index(addr) == pgd_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pgd = pgd_offset(mm, addr);
-        if(pgd_none(*pgd) || pgd_bad(*pgd))
-            return NULL;
-    }
+    pgd = pgd_offset(mm, addr);
+    if(pgd_none(*pgd) || pgd_bad(*pgd))
+        return NULL;
 
-    if (!(p4d_index(addr) == p4d_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        p4d = p4d_offset(pgd, addr);
-        if(p4d_none(*p4d) || p4d_bad(*p4d))
-            return NULL;
-    }
+    p4d = p4d_offset(pgd, addr);
+    if(p4d_none(*p4d) || p4d_bad(*p4d))
+        return NULL;
 
-    if (!(pud_index(addr) == pud_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pud = pud_offset(p4d, addr);
-        if(pud_none(*pud) || pud_bad(*pud))
-            return NULL;
-    }
+    pud = pud_offset(p4d, addr);
+    if(pud_none(*pud) || pud_bad(*pud))
+        return NULL;
 
-    if (!(pmd_index(addr) == pmd_index(lastAddr) && useLast))
-    {
-        useLast = 0;
-        lastAddr = addr;
-        pmd = pmd_offset(pud, addr);
-        if(pmd_none(*pmd) || pmd_bad(*pmd))
-            return NULL;
-    }
+    pmd = pmd_offset(pud, addr);
+    if(pmd_none(*pmd) || pmd_bad(*pmd))
+        return NULL;
 
-    useLast = 1;
-    lastAddr = addr;
     pte = pte_offset_map(pmd, addr);
     if(pte_none(*pte) || !pte_present(*pte))
         return NULL;
@@ -213,17 +189,6 @@ static void print_info(void)
         printk(KERN_INFO "PAGE: 0x%lx\theat: %d\n", heat_info[i + 1].addr, heat_info[i + 1].access_time);
     }
 }
-
-// static void print_to_buf(void)
-// {
-//     int i;
-//     unsigned long lastLen = 0;
-//     for (i = 0; i < heat_info_len; ++i)
-//     {
-//         sprintf(proc_read_buf + lastLen, "0x%lx\t%d\n", heat_info[i + 1].addr, heat_info[i + 1].access_time);
-//         lastLen = strlen(proc_read_buf);
-//     }
-// }
 
 static ssize_t getHeat_proc_read(struct file *filp, char *usr_buf, size_t count, loff_t *offp) 
 {
