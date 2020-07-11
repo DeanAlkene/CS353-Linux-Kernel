@@ -111,12 +111,13 @@ dmesg
 <center>
     <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/1.png" width=600>
+    src="pic/1.png" width=400>
     <div style="color:orange; border-bottom: 1px solid #d9d9d9;
     display: inline-block;
     color: #999;
     padding: 2px;">图1. 筛选页面</div>
 </center>
+
 
 由于终端显示的行数有限，我截取了`/var/log/kern.log`中的内容，可见，筛选出的页面总数为申请页面总数的109%，说明这样的筛选策略是有效的。
 
@@ -252,16 +253,17 @@ static void print_info(void)
 <center>
     <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/3.png" width=300>
+    src="pic/3.png" width=200>
      <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/4.png" width=300>
+    src="pic/4.png" width=200>
     <br>
     <div style="color:orange; border-bottom: 1px solid #d9d9d9;
     display: inline-block;
     color: #999;
     padding: 2px;">图3. 收集热度（部分输出）</div>
 </center>
+
 可见，收集约170000个页面热度信息所需的时间约为3ms，相对于访问密集型程序的计算时间来说还是比较小的。最终，经历了100个循环后的部分热度信息输出如下：
 
 <center>
@@ -423,16 +425,17 @@ void* collect(void* args)
 <center>
     <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/6.png" width=300>
+    src="pic/6.png" width=250>
      <img style="border-radius: 0.3125em;
     box-shadow: 0 2px 4px 0 rgba(34,36,38,.12),0 2px 10px 0 rgba(34,36,38,.08);" 
-    src="pic/7.png" width=300>
+    src="pic/7.png" width=250>
     <br>
     <div style="color:orange; border-bottom: 1px solid #d9d9d9;
     display: inline-block;
     color: #999;
     padding: 2px;">图5. 用户态输出（部分）</div>
 </center>
+
 
 除此之外，我还绘制了热度信息的大致分布。
 
